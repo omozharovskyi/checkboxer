@@ -43,10 +43,10 @@ class PromuaAPIClient(object):
 
 
 class MySQLClient(object):
-    def __init__(self, server, databasename, user, password):
+    def __init__(self, server, dbname, user, password):
         self.context = None
         self.server = server
-        self.databasename = databasename
+        self.dbname = dbname
         self.user = user
         self.password = password
 
@@ -69,6 +69,13 @@ class MySQLClient(object):
 
     def disconnect_db(self):
         self.context.close()
+
+    def insert_order(self, order_create_date, order_id, order_summ):
+        cursor = self.context.cursor()
+        insert_sql_query = 'INSERT IGNORE INTO orders_list (create_date, order_id, order_sum) VALUES (%s, %s, %s)'
+        cursor.execute(insert_sql_query, (order_create_date, order_id, order_summ))
+        self.context.commit()
+        cursor.close()
 
 
 def main():
