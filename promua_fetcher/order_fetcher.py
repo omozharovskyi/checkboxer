@@ -43,9 +43,10 @@ class PromuaAPIClient(object):
 
 
 class MySQLClient(object):
-    def __init__(self, server, dbname, user, password):
+    def __init__(self, server, port, dbname, user, password):
         self.context = None
         self.server = server
+        self.port = port
         self.dbname = dbname
         self.user = user
         self.password = password
@@ -56,7 +57,8 @@ class MySQLClient(object):
                 user=self.user,
                 password=self.password,
                 host=self.server,
-                database=self.databasename,
+                port=self.port,
+                database=self.dbname,
                 use_pure=False
             )
         except mysql.connector.Error as err:
