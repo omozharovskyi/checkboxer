@@ -68,6 +68,9 @@ class MySQLClient(object):
                 print("Database does not exist")
             else:
                 print(err)
+            return False
+        else:
+            return True
 
     def disconnect_db(self):
         self.context.close()
