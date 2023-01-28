@@ -5,6 +5,9 @@ import mysql.connector
 from mysql.connector import errorcode
 import argparse
 import sys
+import re
+import logging
+from datetime import timedelta, date
 import pprint
 
 __version__ = '0.1'
@@ -40,17 +43,16 @@ class PromuaAPIClient(object):
         connection.request(method, url, body=body, headers=headers)
         response = connection.getresponse()
         if response.status != 200:
+            logging.debug(f"Failure to complete request:{response.status}: {response.reason}")
             raise HTTPError(f'{response.status}: {response.reason}')
+        logging.debug("Data from API requested successfully")
         response_data = response.read()
         return json.loads(response_data.decode())
 
     def get_order_list(self):
-        url = '/api/v1/orders/list'
-        method = 'GET'
-        return self.make_request(method, url)
-
-    def get_orders_status_list(self):
-        url = '/api/v1/order_status_options/list'
+        yesterday_date = str(date.today() - timedelta(days=1)) + "T00:00:00"
+        url = f'/api/v1/orders/list?date_from={yesterday_date}&limit=100'
+        logging.debug(f"Requesting: {url}")
         method = 'GET'
         return self.make_request(method, url)
 
@@ -76,38 +78,54 @@ class MySQLClient(object):
             )
         except mysql.connector.Error as err:
             if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                print("Wrong username or password")
+                logging.debug("Wrong username or password")
             elif err.errno == errorcode.ER_BAD_DB_ERROR:
-                print("Database does not exist")
+                logging.debug("Database does not exist")
             else:
-                print(err)
+                logging.debug(err)
+            logging.debug("Failure with connection to data base")
             return False
         else:
+            logging.debug("Successfully connected to data base")
             return True
 
     def disconnect_db(self):
+        logging.debug("Disconnecting from data base")
         self.context.close()
 
     def insert_order(self, order_create_date, order_id, order_summ):
         cursor = self.context.cursor()
         insert_sql_query = 'INSERT IGNORE INTO orders_list (create_date, order_id, order_sum) VALUES (%s, %s, %s)'
-        cursor.execute(insert_sql_query, (order_create_date, order_id, order_summ))
-        self.context.commit()
+        try:
+            cursor.execute(insert_sql_query, (order_create_date, order_id, order_summ))
+            self.context.commit()
+            logging.debug("Order information inserted in data base")
+        except mysql.connector.Error as err:
+            logging.debug(f"Failure upon inserting order information in data base:\n{err}")
         cursor.close()
 
 
 def main():
+    logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s]: %(message)s')
     args = init_parameters()
     api_client = PromuaAPIClient(PROM_KEY, PROM_HOST)
     db_client = MySQLClient(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS)
     db_client.connect_db()
-
     if args.mode == 'fetch':
-        pass
+        orders = api_client.get_order_list()
+        logging.debug(f"Totally {len(orders['orders'])} orders fetched.")
+        for order in orders['orders']:
+            logging.debug(f"ID: {order['id']}, date: {order['date_created']}, price: {order['price']}")
+            order_price = order['price'][0:-4]
+            order_price = re.sub('\s', '', order_price)
+            order_price = order_price.replace(",", ".")
+            logging.debug(f"Normalized price: '{order_price}'")
+            db_client.insert_order(order['date_created'], order['id'], order_price)
     elif args.mode == 'filter':
         pass
+    else:
+        print("'mode' can be only 'fetch' or 'filter'. Exiting. Use '--help' for detailed info.")
     db_client.disconnect_db()
-    sys.exit("'mode' can be only 'fetch' or 'filter'. Exiting. Use '--help' for detailed info.")
 
     # pprint.pprint(api_client.get_order_list())
     # pprint.pprint(api_client.get_orders_status_list())
