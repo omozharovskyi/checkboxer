@@ -3,7 +3,20 @@ import http.client
 from config import *
 import mysql.connector
 from mysql.connector import errorcode
+import argparse
+import sys
 import pprint
+
+__version__ = '0.1'
+
+
+def init_parameters() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Script to fetch and filter orders from prom.ua for further processing in semiautomatic mode."
+    )
+    parser.add_argument("mode", help="fetch - fetches order, filter - check order for defined status.", type=str)
+    parser.add_argument("--version", help="Print version info", action='version', version='%(prog)s v.' + __version__)
+    return parser.parse_args()
 
 
 class HTTPError(Exception):
@@ -84,7 +97,17 @@ class MySQLClient(object):
 
 
 def main():
+    args = init_parameters()
     api_client = PromuaAPIClient(PROM_KEY, PROM_HOST)
+    db_client = MySQLClient(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS)
+    if args.mode == 'fetch':
+        print('fetch')
+    elif args.mode == 'filter':
+        print('filter')
+    else:
+        sys.exit("'mode' can be only 'fetch' or 'filter'. Exiting. Use '--help' for detailed info.")
+
+
     # pprint.pprint(api_client.get_order_list())
     # pprint.pprint(api_client.get_orders_status_list())
     # orders_list = api_client.get_order_list()
