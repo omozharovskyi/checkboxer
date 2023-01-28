@@ -95,18 +95,29 @@ class MySQLClient(object):
         self.context.commit()
         cursor.close()
 
+    def get_max_order_id(self):
+        cursor = self.context.cursor()
+        query = "SELECT MAX(order_id) FROM orders_list"
+        cursor.execute(query)
+        output = cursor.fetchone()
+        if output[0] is None:
+            return False
+        else:
+            return output[0]
+
 
 def main():
     args = init_parameters()
     api_client = PromuaAPIClient(PROM_KEY, PROM_HOST)
     db_client = MySQLClient(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS)
+    db_client.connect_db()
+
     if args.mode == 'fetch':
-        print('fetch')
+        start_order_id = db_client.get_max_order_id()
     elif args.mode == 'filter':
         print('filter')
-    else:
-        sys.exit("'mode' can be only 'fetch' or 'filter'. Exiting. Use '--help' for detailed info.")
-
+    db_client.disconnect_db()
+    sys.exit("'mode' can be only 'fetch' or 'filter'. Exiting. Use '--help' for detailed info.")
 
     # pprint.pprint(api_client.get_order_list())
     # pprint.pprint(api_client.get_orders_status_list())
