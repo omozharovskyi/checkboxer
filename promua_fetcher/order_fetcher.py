@@ -95,16 +95,6 @@ class MySQLClient(object):
         self.context.commit()
         cursor.close()
 
-    def get_max_order_id(self):
-        cursor = self.context.cursor()
-        query = "SELECT MAX(order_id) FROM orders_list"
-        cursor.execute(query)
-        output = cursor.fetchone()
-        if output[0] is None:
-            return False
-        else:
-            return output[0]
-
 
 def main():
     args = init_parameters()
@@ -113,9 +103,9 @@ def main():
     db_client.connect_db()
 
     if args.mode == 'fetch':
-        start_order_id = db_client.get_max_order_id()
+        pass
     elif args.mode == 'filter':
-        print('filter')
+        pass
     db_client.disconnect_db()
     sys.exit("'mode' can be only 'fetch' or 'filter'. Exiting. Use '--help' for detailed info.")
 
