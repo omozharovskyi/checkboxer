@@ -1,14 +1,13 @@
 import json
 import http.client
+import time
 from config import *
 import mysql.connector
 from mysql.connector import errorcode
 import argparse
-import sys
 import re
 import logging
 from datetime import timedelta, date
-import pprint
 
 __version__ = '0.1'
 
@@ -55,6 +54,12 @@ class PromuaAPIClient(object):
         logging.debug(f"Requesting: {url}")
         method = 'GET'
         return self.make_request(method, url)
+
+    def get_order_id_status_name(self, order_id):
+        url = f'/api/v1/orders/{order_id}'
+        logging.debug(f"Requesting: {url}")
+        method = 'GET'
+        return self.make_request(method, url)['order']['status_name']
 
 
 class MySQLClient(object):
@@ -104,11 +109,37 @@ class MySQLClient(object):
             logging.debug(f"Failure upon inserting order information in data base:\n{err}")
         cursor.close()
 
+    def get_unfiltered_orders(self):
+        logging.debug("Requesting from data base list of orders with status 'unconfirmed'")
+        cursor = self.context.cursor()
+        select_sql_query = "SELECT order_id FROM orders_list WHERE internal_order_status='unconfirmed'"
+        try:
+            cursor.execute(select_sql_query)
+            orders_data = cursor.fetchall()
+        except mysql.connector.Error as err:
+            logging.debug(f"Failure upon fetching orders from data base:\n{err}")
+            return None
+        else:
+            return orders_data
+
+    def update_order_status(self, order_id, order_status):
+        cursor = self.context.cursor()
+        update_query = 'UPDATE orders_list SET internal_order_status=%s WHERE order_id=%s'
+        try:
+            cursor.execute(update_query, (order_status, order_id))
+            self.context.commit()
+            logging.debug("Order status updated in data base")
+        except mysql.connector.Error as err:
+            logging.debug(f"Failure upon updating order status in data base:\n{err}")
+        cursor.close()
+
 
 def main():
     logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s]: %(message)s')
     args = init_parameters()
+    logging.debug("'order_fetcher' tool to fetch and filter orders from prom.ua for further processing")
     api_client = PromuaAPIClient(PROM_KEY, PROM_HOST)
+    logging.debug("API client created")
     db_client = MySQLClient(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS)
     db_client.connect_db()
     if args.mode == 'fetch':
@@ -122,16 +153,22 @@ def main():
             logging.debug(f"Normalized price: '{order_price}'")
             db_client.insert_order(order['date_created'], order['id'], order_price)
     elif args.mode == 'filter':
-        pass
+        wait_orders = db_client.get_unfiltered_orders()
+        logging.debug(f"Totally {len(wait_orders)} orders to filter.")
+        for order in wait_orders:
+            time.sleep(0.5)
+            order_status_name = api_client.get_order_id_status_name(order[0])
+            if order_status_name in PROM_ORDER_FILTER_STATUS_CORRECT:
+                logging.debug(f"Order {order[0]} status: '{order_status_name}'. Updating as 'confirmed' one.")
+                db_client.update_order_status(order[0], 'confirmed')
+            elif order_status_name in PROM_ORDER_FILTER_STATUS_WRONG:
+                logging.debug(f"Order {order[0]} status: '{order_status_name}'. Updating as 'ignored' one.")
+                db_client.update_order_status(order[0], 'ignored')
+            else:
+                logging.debug(f"Order {order[0]} status: '{order_status_name}'. Skipping.")
     else:
         print("'mode' can be only 'fetch' or 'filter'. Exiting. Use '--help' for detailed info.")
     db_client.disconnect_db()
-
-    # pprint.pprint(api_client.get_order_list())
-    # pprint.pprint(api_client.get_orders_status_list())
-    # orders_list = api_client.get_order_list()
-    # for order in orders_list['orders']:
-    #     pprint.pprint(order['status_name'])
 
 
 if __name__ == '__main__':
