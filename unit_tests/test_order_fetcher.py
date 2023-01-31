@@ -18,6 +18,6 @@ class TestArgParser(unittest.TestCase):
         """Checking parsing URL parameter"""
         sys.argv[1:] = ['fetch']
         options = init_parameters()
-        self.assertEqual(options.source, 'fetch', "Failure to pass URL from command line")
+        self.assertEqual(options.mode, 'fetch', "Failure to pass mode from command line")
 
 

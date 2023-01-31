@@ -1,7 +1,7 @@
 import json
 import http.client
 import time
-from config import *
+from promua_fetcher.config import *
 import mysql.connector
 from mysql.connector import errorcode
 import argparse
