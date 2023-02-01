@@ -1,7 +1,8 @@
 import unittest
-# import mock
 from unittest import mock
 import sys
+from mock import patch
+import json
 from promua_fetcher.order_fetcher import init_parameters
 from promua_fetcher.order_fetcher import MySQLClient
 from promua_fetcher.order_fetcher import PromuaAPIClient
@@ -33,3 +34,18 @@ class TestMySQLClient(unittest.TestCase):
         mockconnect.assert_called()
 
 
+class TestPromuaAPIClient(unittest.TestCase):
+
+    @patch('promua_fetcher.order_fetcher.PromuaAPIClient.make_request')
+    def test_get_order_list(self, make_request_mock):
+        make_request_mock.return_value = json.loads('{"groups":[{"id":0,"name":"string","description": "string"}]}')
+        prom_client = PromuaAPIClient("TOKEN", "HOST")
+        self.assertIsInstance(prom_client.get_order_list(), dict)
+
+    @patch('promua_fetcher.order_fetcher.PromuaAPIClient.make_request')
+    def test_get_order_id_status_name(self, make_request_mock):
+        make_request_mock.return_value = json.loads('{  "order":  {"id":0,"status_name":"test_string"} }')
+        prom_client = PromuaAPIClient("TOKEN", "HOST")
+        test_data = prom_client.get_order_id_status_name(5)
+        self.assertIsInstance(test_data, str)
+        self.assertEqual(test_data, "test_string")
