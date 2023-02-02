@@ -9,10 +9,11 @@ import re
 import logging
 from datetime import timedelta, date
 
-__version__ = '0.1'
+__version__ = '0.2'
 
 
 def init_parameters() -> argparse.Namespace:
+    """Parser of arguments from command line"""
     parser = argparse.ArgumentParser(
         description="Script to fetch and filter orders from prom.ua for further processing in semiautomatic mode."
     )
@@ -22,16 +23,18 @@ def init_parameters() -> argparse.Namespace:
 
 
 class HTTPError(Exception):
+    """Class to handle http errors"""
     pass
 
 
 class PromuaAPIClient(object):
-
+    """prom.ua API client implementation"""
     def __init__(self, token, host):
         self.token = token
         self.host = host
 
     def make_request(self, method, url, body=None):
+        """General function for making requests to API"""
         connection = http.client.HTTPSConnection(self.host)
         headers = {
             'Authorization': 'Bearer {}'.format(self.token),
@@ -49,6 +52,7 @@ class PromuaAPIClient(object):
         return json.loads(response_data.decode())
 
     def get_order_list(self):
+        """Wrapper for specific request to API and answers format - gets list of order for today and yesterday"""
         yesterday_date = str(date.today() - timedelta(days=1)) + "T00:00:00"
         url = f'/api/v1/orders/list?date_from={yesterday_date}&limit=100'
         logging.debug(f"Requesting: {url}")
@@ -56,6 +60,7 @@ class PromuaAPIClient(object):
         return self.make_request(method, url)
 
     def get_order_id_status_name(self, order_id):
+        """Requests status name for specified order"""
         url = f'/api/v1/orders/{order_id}'
         logging.debug(f"Requesting: {url}")
         method = 'GET'
@@ -63,6 +68,7 @@ class PromuaAPIClient(object):
 
 
 class MySQLClient(object):
+    """Class to manage connection and requests to data base"""
     def __init__(self, server, port, dbname, user, password):
         self.context = None
         self.server = server
@@ -72,6 +78,7 @@ class MySQLClient(object):
         self.password = password
 
     def connect_db(self):
+        """Connection"""
         try:
             self.context = mysql.connector.connect(
                 user=self.user,
@@ -95,10 +102,12 @@ class MySQLClient(object):
             return True
 
     def disconnect_db(self):
+        """Closing connection"""
         logging.debug("Disconnecting from data base")
         self.context.close()
 
     def insert_order(self, order_create_date, order_id, order_summ):
+        """Inserting record about order. One order per call"""
         cursor = self.context.cursor()
         insert_sql_query = 'INSERT IGNORE INTO orders_list (create_date, order_id, order_sum) VALUES (%s, %s, %s)'
         try:
@@ -110,6 +119,7 @@ class MySQLClient(object):
         cursor.close()
 
     def get_unfiltered_orders(self):
+        """Get all orders list that not clarified with status in storage data base"""
         logging.debug("Requesting from data base list of orders with status 'unconfirmed'")
         cursor = self.context.cursor()
         select_sql_query = "SELECT order_id FROM orders_list WHERE internal_order_status='unconfirmed'"
@@ -123,6 +133,7 @@ class MySQLClient(object):
             return orders_data
 
     def update_order_status(self, order_id, order_status):
+        """Update order status with new one"""
         cursor = self.context.cursor()
         update_query = 'UPDATE orders_list SET internal_order_status=%s WHERE order_id=%s'
         try:
@@ -135,6 +146,7 @@ class MySQLClient(object):
 
 
 def main():
+    """Variables initialization. While on development, log levell will be DEBUG"""
     logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s]: %(message)s')
     args = init_parameters()
     logging.debug("'order_fetcher' tool to fetch and filter orders from prom.ua for further processing")
@@ -143,21 +155,26 @@ def main():
     db_client = MySQLClient(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS)
     db_client.connect_db()
     if args.mode == 'fetch':
+        """Script lanched with parameter 'fetch'"""
         orders = api_client.get_order_list()
         logging.debug(f"Totally {len(orders['orders'])} orders fetched.")
         for order in orders['orders']:
             logging.debug(f"ID: {order['id']}, date: {order['date_created']}, price: {order['price']}")
+            """Making manipulation with string variable, so do will be able to insert in data base in correct form"""
             order_price = order['price'][0:-4]
             order_price = re.sub('\s', '', order_price)
             order_price = order_price.replace(",", ".")
             logging.debug(f"Normalized price: '{order_price}'")
             db_client.insert_order(order['date_created'], order['id'], order_price)
     elif args.mode == 'filter':
+        """Script lanched with parameter 'filter'"""
         wait_orders = db_client.get_unfiltered_orders()
         logging.debug(f"Totally {len(wait_orders)} orders to filter.")
         for order in wait_orders:
+            """Some time delay would be usefull to avoid banning from server due to load"""
             time.sleep(0.5)
             order_status_name = api_client.get_order_id_status_name(order[0])
+            """Three ways to proceed with filtering: mark 'confirmed', mark 'ignored', leave for later."""
             if order_status_name in PROM_ORDER_FILTER_STATUS_CORRECT:
                 logging.debug(f"Order {order[0]} status: '{order_status_name}'. Updating as 'confirmed' one.")
                 db_client.update_order_status(order[0], 'confirmed')
@@ -168,8 +185,10 @@ def main():
                 logging.debug(f"Order {order[0]} status: '{order_status_name}'. Skipping.")
     else:
         print("'mode' can be only 'fetch' or 'filter'. Exiting. Use '--help' for detailed info.")
+    """Closing all created connection before end"""
     db_client.disconnect_db()
 
 
 if __name__ == '__main__':
+    """Using 'main()' to be able start from setuped package (in case it would be implemented)."""
     main()
